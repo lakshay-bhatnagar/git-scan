@@ -121,7 +121,7 @@ def process_repo(repo, token, all_results, domain):
 # Main function
 def main():
     all_results = []
-    domain = input("Enter company domain (e.g., example.com): ")
+    domain = input("Enter company domain (e.g., example.com dont use '@'): ")
 
     # Generate queries
     queries = [
