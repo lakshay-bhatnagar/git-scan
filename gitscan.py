@@ -15,12 +15,12 @@ from concurrent.futures import ThreadPoolExecutor
 os.environ['SSL_CERT_FILE'] = certifi.where()
 
 # GitHub token
-token = 'ENTER_GITHUB_TOKEN'
+token = 'ENTER_GITHUB_PERSONAL_ACCESS_TOKEN'
 
-# Sendgrid API Key
+# SendGrid API Key (not using right not)
 SENDGRID_API_KEY = 'ENTER_SENDGRID_API'
 
-# Sender verified ID
+# Sender verified ID (not using right not)
 SENDER_EMAIL = 'sender@email.com'
 
 # Sensitive keywords and patterns
@@ -34,7 +34,12 @@ sensitive_patterns = [
     r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",  # UUIDs
     r"client[_-]?id", r"client[_-]?secret", r"db[_-]?password", r"db[_-]?user",
     r"aws[_-]?access[_-]?key[_-]?id", r"aws[_-]?secret[_-]?access[_-]?key",
-    r"azure[_-]?tenant[_-]?id", r"azure[_-]?client[_-]?id", r"azure[_-]?client[_-]?secret"
+    r"azure[_-]?tenant[_-]?id", r"azure[_-]?client[_-]?id", r"azure[_-]?client[_-]?secret",
+    r"\b(?:\d{1,3}\.){3}\d{1,3}\b",  # IPv4 addresses
+    r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}",  # Email addresses
+    r"mongodb\+srv://[^\"\s]+",  # MongoDB connection strings
+    r"postgresql://[^\"\s]+",  # PostgreSQL connection strings
+    r"mysql://[^\"\s]+"  # MySQL connection strings
 ]
 
 # False positive filters
@@ -57,52 +62,36 @@ def search_github_code(query, token):
             repos.extend(data.get('items', []))
             url = response.links.get('next', {}).get('url')  # Follow pagination
         else:
-            logging.error(f"Failed to fetch code search results: {response.status_code}")
+            logging.error(f"Failed to fetch code search results: {response.status_code} - {response.text}")
             break
     return repos
 
-# Function to write repository links to a CSV file
+def get_last_modified(repo, token):
+    commits_url = repo['repository']['commits_url'].replace("{/sha}", f"?path={repo['path']}")
+    response = requests.get(commits_url, headers={"Authorization": f"Bearer {token}"} )
+    if response.status_code == 200:
+        commits = response.json()
+        if commits:
+            return commits[0]['commit']['committer']['date']
+    return "Unknown"
+
+# Function to write results to a CSV file (with full details)
 def write_to_csv(results, filename):
     with open(filename, mode='w', newline='') as file:
         writer = csv.writer(file)
-        writer.writerow(["Repository URL", "File Link", "Match Type", "Matched Patterns"])
+        writer.writerow(["Repository URL", "File Link", "Match Type", "Matched Patterns", "Last Modified", "File Type"])
         for result in results:
             writer.writerow(result)
 
-# Function to send email with attachment using SendGrid
-def send_email_with_sendgrid(api_key, sender_email, recipient_email, subject, body, attachment_path):
-    message = Mail(
-        from_email=sender_email,
-        to_emails=recipient_email,
-        subject=subject,
-        html_content=body
-    )
-
-    # Attach the file if it exists
-    if os.path.exists(attachment_path):
-        with open(attachment_path, 'rb') as file:
-            file_data = file.read()
-            encoded_file = base64.b64encode(file_data).decode()
-            attachment = Attachment(
-                file_content=encoded_file,
-                file_type='text/csv',
-                file_name=os.path.basename(attachment_path),
-                disposition='attachment'
-            )
-            message.attachment = attachment
-    else:
-        logging.error(f"File not found: {attachment_path}")
-        return
-
-    try:
-        sg = SendGridAPIClient(api_key)
-        response = sg.send(message)
-        logging.info(f"Email sent successfully! Status Code: {response.status_code}")
-    except Exception as e:
-        logging.error(f"Failed to send email: {e}")
+# Function to check if content matches the domain or sensitive patterns
+def has_relevant_matches(file_content, patterns, domain):
+    file_content_lower = file_content.lower()
+    domain_match = domain in file_content_lower
+    sensitive_match = any(re.search(pattern, file_content, re.IGNORECASE) for pattern in patterns)
+    return domain_match or sensitive_match
 
 # Function to process each repository
-def process_repo(repo, token, all_results):
+def process_repo(repo, token, all_results, domain):
     file_content_url = repo['url']
     response = requests.get(file_content_url, headers={"Authorization": f"token {token}"})
     if response.status_code == 200:
@@ -112,69 +101,53 @@ def process_repo(repo, token, all_results):
             logging.error(f"Error decoding content for {repo['html_url']}")
             return
 
-        # Normalize content and check for false positives
-        file_content = file_content.strip().lower()
-        if any(term in file_content for term in false_positive_terms):
-            return
-
-        matches = []
-        for pattern in sensitive_patterns:
-            try:
-                match = re.findall(pattern, file_content, re.IGNORECASE)
-                if match:
-                    matches.extend(match)
-            except re.error as e:
-                logging.error(f"Invalid regex pattern: {pattern} ({e})")
-
-        if matches:
+        if has_relevant_matches(file_content, sensitive_patterns, domain):
+            last_modified = get_last_modified(repo, token)
+            matched_patterns = [pattern for pattern in sensitive_patterns if re.search(pattern, file_content, re.IGNORECASE)]
+            matched_patterns = list(set(matched_patterns))  # Remove duplicates
+            file_type = os.path.splitext(repo['name'])[1]
+            # Append the full details to the result list if the domain is found
             all_results.append([
                 repo['repository']['html_url'],
                 repo['html_url'],
                 "Sensitive Match",
-                ", ".join(set(matches))  # Avoid duplicates
+                ", ".join(matched_patterns),
+                last_modified,
+                file_type
             ])
+    else:
+        logging.error(f"Failed to fetch file content for {repo['html_url']} - {response.status_code}")
 
 # Main function
 def main():
     all_results = []
-    company_name = input("Enter company domain (e.g., example.com): ")
+    domain = input("Enter company domain (e.g., example.com): ")
 
-    # Search for company domain
+    # Generate queries
     queries = [
-        f"%40{company_name}",  # Search for company domain
-        f"{company_name}",  # Search for company name
-        f"{company_name} password",  # Search for company name with password
-        f"{company_name} secret",  # Search for company name with secret
-        f"{company_name} token"  # Search for company name with token
+        f"%40{domain}", f"{domain}", f"{domain} password",
+        f"{domain} secret", f"{domain} token", "config",
+        ".env", "docker-compose", "aws credentials", "database.yml", "CVE-"
     ]
 
+    # Search repositories
     repos = []
     for query in queries:
         repos.extend(search_github_code(query, token))
 
-    # Process each repository in parallel
+    # Process repositories in parallel
     with ThreadPoolExecutor(max_workers=10) as executor:
         for repo in repos:
-            executor.submit(process_repo, repo, token, all_results)
+            executor.submit(process_repo, repo, token, all_results, domain)
 
+    # Output results
     if all_results:
-        # Create 'Outputs' directory if it doesn't exist
         if not os.path.exists('Outputs'):
             os.makedirs('Outputs')
 
-        # Generate filename with current date and time
-        current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = os.path.join('Outputs', f"{company_name}_sensitive_data_{current_time}.csv")
+        filename = os.path.join('Outputs', f"{domain}_sensitive_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
         write_to_csv(all_results, filename)
         logging.info(f"CSV file '{filename}' created successfully.")
-
-        # Email Configuration
-        sendgrid_api_key = SENDGRID_API_KEY
-        sender_email = SENDER_EMAIL
-        recipient_email = input("Enter recipient email: ")
-        subject = "Sensitive Data Findings Report"
-        body = "Please find attached the CSV file containing the sensitive data findings."
-        send_email_with_sendgrid(sendgrid_api_key, sender_email, recipient_email, subject, body, filename)
     else:
         logging.info("No sensitive data found.")
 
