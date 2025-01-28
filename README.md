@@ -69,7 +69,7 @@ The CSV file includes:
 ## Screenshots
 
 ### Example Screenshot Placeholder
-![Screenshot](screenshots/example.png)
+![Screenshot](Screenshot 2025-01-28 175429.png)
 
 ## Handling Rate Limits
 - The script includes logic to handle GitHub's API rate limiting.
