@@ -11,6 +11,7 @@ from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail, Attachment
 import base64
 from concurrent.futures import ThreadPoolExecutor
+from colorama import Fore,Back,Style
 
 # Set SSL certificates to use certifi's bundle
 os.environ['SSL_CERT_FILE'] = certifi.where()
@@ -63,7 +64,7 @@ def search_github_code(query, token):
             repos.extend(data.get('items', []))
             url = response.links.get('next', {}).get('url')  # Follow pagination
         else:
-            logging.error(f"Failed to fetch code search results: {response.status_code} - {response.text}")
+            logging.error(Fore.RED + "[INFO] "+ Fore.WHITE + f"Failed to fetch code search results: {response.status_code} - {response.text}")
             break
     return repos
 
@@ -156,9 +157,41 @@ def process_repo(repo, token, all_results, domain):
 
 # Main function
 def main():
+    print(Fore.CYAN+r"""
+   ____ _ _   ____
+ / ___(_) |_/ ___|  ___ __ _ _ __
+| |  _| | __\___ \ / __/ _` | '_ \
+| |_| | | |_ ___) | (_| (_| | | | |
+ \____|_|\__|____/ \___\__,_|_| |_|
+
+                                
+"""+Fore.RED+
+"""
+
+Pre-requisites
+- A GitHub Personal Access Token  
+"""+Fore.LIGHTGREEN_EX+
+
+"""
+
+Description:
+GitScan is a powerful and efficient tool designed to scan and analyze Git repositories. It helps developers and security professionals identify potential vulnerabilities, misconfigurations, and other security issues within their codebase. By automating the scanning process, GitScan ensures that your repositories are continuously monitored and secure.        
+
+Features:
+- Automated scanning of Git repositories for security vulnerabilities.
+- Generates the CSV file output containing link of repositories that might leak some confidential data.
+
+Usage:
+Simply run the script and provide the necessary parameters to start scanning your Git repositories. The results will be displayed in a comprehensive report, highlighting any detected issues and providing recommendations for remediation.
+          
+If the script is taking more than usual it might be due to:
+- Provided input contains a lot of data on GitHub.
+- The GitHub Personal Access Token has reached its limit and you have to wait until it gets refreshed.
+
+""" + Style.RESET_ALL)
     all_results = []
     domain = input("Enter company domain (e.g., example.com): ")
-
+    print(Fore.LIGHTGREEN_EX+f"Seaching for {domain}..."+Style.RESET_ALL)
     # Generate queries
     queries = [
         f"%40{domain}", f"{domain}", f"{domain} password",
@@ -183,9 +216,10 @@ def main():
 
         filename = os.path.join('Outputs', f"{domain}_sensitive_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
         write_to_csv(all_results, filename)
-        logging.info(f"CSV file '{filename}' created successfully.")
+        logging.info(Fore.GREEN+f"CSV file '{filename}' created successfully." + Style.RESET_ALL)
+        
     else:
-        logging.info("No sensitive data found.")
+        logging.info("No sensitive data found."+ Style.RESET_ALL)
 
 if __name__ == "__main__":
     main()
