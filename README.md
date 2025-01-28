@@ -25,8 +25,8 @@ This project is a Python-based tool designed to search for sensitive information
 ## Installation
 1. Clone this repository to your local machine:
    ```bash
-   git clone https://github.com/your-repo/github-sensitive-data-scanner.git
-   cd github-sensitive-data-scanner
+   git clone https://github.com/lakshay-bhatnagar/git-scan.git
+   cd git-scan
    ```
 2. Create a Python virtual environment (optional but recommended):
    ```bash
