@@ -49,6 +49,13 @@ false_positive_terms = [
 # Logging setup
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+# Function to write results to CSV
+def write_to_csv(data, filename):
+    with open(filename, mode='w', newline='', encoding='utf-8') as file:
+        writer = csv.writer(file)
+        writer.writerow(["Repository URL", "File URL", "Commit URL", "Type", "Matched Patterns", "Matched Data", "Confidence Score"])
+        writer.writerows(data)
+
 # Function to search GitHub code with pagination and error handling
 def search_github_code(query, token):
     url = f"https://api.github.com/search/code?q={query}&per_page=100"
@@ -69,31 +76,6 @@ def search_github_code(query, token):
             break
     return repos
 
-# Function to process each repository and check confidence score
-def process_repo(repo, token, all_results, domain):
-    file_content = repo.get('content')
-    repo_name = repo['repository']['full_name']
-    if file_content and has_relevant_matches(file_content, sensitive_patterns, domain):
-        matched_patterns = [pattern for pattern in sensitive_patterns if re.search(pattern, file_content, re.IGNORECASE)]
-        matched_data = set(re.findall('|'.join(sensitive_patterns), file_content, re.IGNORECASE))
-        confidence_score = len(matched_data) / len(sensitive_patterns)  # Calculate confidence score
-        if not any(term in file_content.lower() for term in false_positive_terms) and confidence_score > 0.3:
-            # Check repository history for earlier versions
-            commits_url = f"https://api.github.com/repos/{repo_name}/commits"
-            commits_response = requests.get(commits_url, headers={"Authorization": f"Bearer {token}"})
-            if commits_response.status_code == 200:
-                commits = commits_response.json()
-                for commit in commits[:10]:
-                    all_results.append([
-                        repo['repository']['html_url'],
-                        repo['html_url'],
-                        commit.get('html_url', 'N/A'),
-                        'Sensitive Match',
-                        ', '.join(matched_patterns),
-                        ', '.join(matched_data),
-                        f'Confidence Score: {confidence_score:.2f}'
-                    ])
-
 # Main function
 def main():
     all_results = []
@@ -102,9 +84,6 @@ def main():
     repos = []
     for query in queries:
         repos.extend(search_github_code(query, token))
-    with ThreadPoolExecutor(max_workers=10) as executor:
-        for repo in repos:
-            executor.submit(process_repo, repo, token, all_results, domain)
     if all_results:
         filename = f"Outputs/{domain}_sensitive_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
         os.makedirs('Outputs', exist_ok=True)
