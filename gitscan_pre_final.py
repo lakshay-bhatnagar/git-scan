@@ -25,7 +25,8 @@ sensitive_patterns = {
     "High": [
         r"BEGIN\sPRIVATE\sKEY", r"END\sPRIVATE\sKEY",
         r"BEGIN\sRSA\sPRIVATE\sKEY", r"END\sRSA\sPRIVATE\sKEY",
-        r"aws[_-]?secret[_-]?access[_-]?key", r"azure[_-]?client[_-]?secret"
+        r"aws[_-]?secret[_-]?access[_-]?key", r"azure[_-]?client[_-]?secret",
+        r"(jdbc|odbc|sqlserver|mysql|postgres|database)[-_]?(url|password|user|name)"
     ],
     "Medium": [
         r"API[_-]?KEY", r"ACCESS[_-]?TOKEN", r"client[_-]?secret",
@@ -42,14 +43,18 @@ false_positive_terms = ["example", "test", "demo", "mock", "sample", "documentat
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
-def search_github_code(query, token):
+def search_github_code(query, token, processed_repos):
     url = f"https://api.github.com/search/code?q={query}&per_page=100"
     headers = {"Authorization": f"Bearer {token}"}
     repos = []
     while url:
         response = requests.get(url, headers=headers)
         if response.status_code == 200:
-            repos.extend(response.json().get('items', []))
+            for item in response.json().get('items', []):
+                repo_url = item['repository']['html_url']
+                if repo_url not in processed_repos:
+                    repos.append(item)
+                    processed_repos.add(repo_url)
             url = response.links.get('next', {}).get('url')
         else:
             logging.error(f"Failed to fetch results: {response.status_code}")
@@ -114,9 +119,10 @@ def main():
 
     queries = [f"%40{domain}", f"{domain} password", f"{domain} secret", ".env", "aws credentials"]
 
+    processed_repos = set()
     repos = []
     for query in queries:
-        repos.extend(search_github_code(query, token))
+        repos.extend(search_github_code(query, token, processed_repos))
 
     all_results = []
     with ThreadPoolExecutor(max_workers=10) as executor:
@@ -135,3 +141,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
