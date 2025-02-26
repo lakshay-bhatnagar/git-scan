@@ -14,7 +14,7 @@ from colorama import Fore, Style
 # Set SSL certificates
 os.environ['SSL_CERT_FILE'] = certifi.where()
 
-token = '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'
+token = 'GITHUB_PAT'
 SENDGRID_API_KEY = os.getenv('SENDGRID_API_KEY')
 SENDER_EMAIL = os.getenv('SENDER_EMAIL')
 
