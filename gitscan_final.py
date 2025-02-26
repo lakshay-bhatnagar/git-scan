@@ -5,7 +5,7 @@ import certifi
 import requests
 import csv
 import re
-import logging
+#import logging  #CGPT Commented out logging as per requirement
 from datetime import datetime, timezone
 import base64
 from concurrent.futures import ThreadPoolExecutor
@@ -24,7 +24,8 @@ sensitive_patterns = {
         r"BEGIN\sPRIVATE\sKEY", r"END\sPRIVATE\sKEY",
         r"BEGIN\sRSA\sPRIVATE\sKEY", r"END\sRSA\sPRIVATE\sKEY",
         r"aws[_-]?secret[_-]?access[_-]?key", r"azure[_-]?client[_-]?secret",
-        r"(jdbc|odbc|sqlserver|mysql|postgres|database)[-_]?(url|password|user|name)"
+        r"(jdbc|odbc|sqlserver|mysql|postgres|database)[-_]?(url|password|user|name)",
+        r"secret[_-]?key", r"private[_-]?token", r"auth[_-]?token"  #CGPT Added more patterns
     ],
     "Medium": [
         r"API[_-]?KEY", r"ACCESS[_-]?TOKEN", r"client[_-]?secret",
@@ -38,11 +39,11 @@ sensitive_patterns = {
 
 false_positive_terms = ["example", "test", "demo", "mock", "sample", "documentation"]
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+#logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')  #CGPT Commented out logging
 
 
-def search_github_code(query, token):
-    url = f"https://api.github.com/search/code?q={query}&per_page=100"
+def search_github_code(query, token, domain):
+    url = f"https://api.github.com/search/code?q={query}+in:file+repo:{domain}&per_page=100"  #CGPT Modified to search in specific repo
     headers = {"Authorization": f"Bearer {token}"}
     repos = []
     while url:
@@ -51,7 +52,7 @@ def search_github_code(query, token):
             repos.extend(response.json().get('items', []))
             url = response.links.get('next', {}).get('url')
         else:
-            logging.error(f"Failed to fetch results: {response.status_code}")
+            #logging.error(f"Failed to fetch results: {response.status_code}")  #CGPT Commented out error logging
             break
     return repos
 
@@ -69,7 +70,8 @@ def get_file_content_at_commit(repo, commit_sha, token):
         try:
             return base64.b64decode(response.json().get('content', '')).decode('utf-8')
         except Exception as e:
-            logging.error(f"Error decoding content for {repo['html_url']}: {str(e)}")
+            #logging.error(f"Error decoding content for {repo['html_url']}: {str(e)}")  #CGPT Commented out error logging
+            pass
     return None
 
 
@@ -109,13 +111,13 @@ def process_repo(repo, token, all_results, domain):
 
 def main():
     print(Fore.CYAN + "GitScan - GitHub Sensitive Data Scanner" + Style.RESET_ALL)
-    domain = input("Enter company domain (e.g., example.com): ")
+    domain = input("Enter company domain (e.g., ltimindtree): ")
 
     queries = [f"%40{domain}", f"{domain} password", f"{domain} secret", ".env", "aws credentials"]
 
     repos = []
     for query in queries:
-        repos.extend(search_github_code(query, token))
+        repos.extend(search_github_code(query, token, domain))  #CGPT Modified to use specific domain
 
     all_results = []
     with ThreadPoolExecutor(max_workers=10) as executor:
@@ -127,9 +129,9 @@ def main():
             os.makedirs('Outputs')
         filename = os.path.join('Outputs', f"{domain}_sensitive_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
         write_to_csv(all_results, filename)
-        logging.info(Fore.GREEN + f"CSV file '{filename}' created successfully." + Style.RESET_ALL)
+        print(Fore.GREEN + f"CSV file '{filename}' created successfully." + Style.RESET_ALL)  #CGPT Changed logging to print
     else:
-        logging.info("No sensitive data found.")
+        print("No sensitive data found.")  #CGPT Changed logging to print
 
 
 if __name__ == "__main__":
