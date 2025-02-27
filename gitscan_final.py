@@ -111,7 +111,7 @@ def process_repo(repo, token, all_results, domain):
 
 def main():
     print(Fore.CYAN + "GitScan - GitHub Sensitive Data Scanner" + Style.RESET_ALL)
-    domain = input("Enter company domain (e.g., ltimindtree): ")
+    domain = input("Enter company domain (e.g., example.com): ")
 
     queries = [f"%40{domain}", f"{domain} password", f"{domain} secret", ".env", "aws credentials"]
 
