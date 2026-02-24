@@ -15,8 +15,8 @@ from colorama import Fore, Style
 os.environ['SSL_CERT_FILE'] = certifi.where()
 
 token = 'GITHUB_PAT'
-SENDGRID_API_KEY = os.getenv('SENDGRID_API_KEY')
-SENDER_EMAIL = os.getenv('SENDER_EMAIL')
+# SENDGRID_API_KEY = os.getenv('SENDGRID_API_KEY')
+# SENDER_EMAIL = os.getenv('SENDER_EMAIL')
 
 # Sensitive patterns categorized by confidence levels
 sensitive_patterns = {
@@ -43,7 +43,7 @@ false_positive_terms = ["example", "test", "demo", "mock", "sample", "documentat
 
 
 def search_github_code(query, token, domain):
-    url = f"https://api.github.com/search/code?q={query}+in:file+repo:{domain}&per_page=100"  #CGPT Modified to search in specific repo
+    url = f"https://api.github.com/search/code?q={query}+in:file&per_page=100"  #CGPT Modified to search in specific repo
     headers = {"Authorization": f"Bearer {token}"}
     repos = []
     while url:
